@@ -1,6 +1,7 @@
 // Copyright Nifadyev Vadim 2019
 #include <iostream>
 #include <ctime>
+#include <cstdlib>
 
 // QuickSort - linear algorithm
 
