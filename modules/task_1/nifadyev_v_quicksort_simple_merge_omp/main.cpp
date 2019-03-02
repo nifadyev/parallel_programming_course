@@ -67,10 +67,9 @@ void PrintArray(int* array, const int size) {
 
 void GenerateArray(int *array, const int size) {
     int i;
-    unsigned int seed = time(NULL);
 
     for (i = 0; i < size; i++) {
-        array[i] = rand_r(&seed) % 100;
+        array[i] = rand() % 100;
     }
 }
 
