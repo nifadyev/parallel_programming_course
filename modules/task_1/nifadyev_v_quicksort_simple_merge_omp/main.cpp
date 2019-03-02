@@ -1,8 +1,6 @@
 // Copyright Nifadyev Vadim 2019
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <time.h>
+#include <iostream>
+#include <ctime>
 
 // QuickSort - linear algorithm
 
@@ -56,19 +54,16 @@ void QuickSort(int* array, int low, int high) {
 }
 
 void PrintArray(int* array, const int size) {
-    int i;
-
-
-    for (i = 0; i < size; i++) {
-        printf("%d ", array[i]);
+    for (int i = 0; i < size; i++) {
+        std::cout << array[i] << " ";
     }
-    printf("\n");
+    std::cout << std::endl;
 }
 
 void GenerateArray(int *array, const int size) {
-    int i;
+    srand((unsigned int)time(NULL));
 
-    for (i = 0; i < size; i++) {
+    for (int i = 0; i < size; i++) {
         array[i] = std::rand() % 100;
     }
 }
@@ -79,12 +74,12 @@ int main() {
     int n = sizeof(array) / sizeof(array[0]);
 
     GenerateArray(array, size);
-    printf("Unsorted array: ");
+    std::cout << "Unsorted array: ";
     PrintArray(array, size);
 
     QuickSort(array, 0, n - 1);
 
-    printf("Sorted array: ");
+    std::cout << "Sorted array: ";
     PrintArray(array, size);
 
     return 0;
