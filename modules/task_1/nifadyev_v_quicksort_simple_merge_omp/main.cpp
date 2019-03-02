@@ -69,7 +69,7 @@ void GenerateArray(int *array, const int size) {
     int i;
 
     for (i = 0; i < size; i++) {
-        array[i] = rand() % 100;
+        array[i] = std::rand() % 100;
     }
 }
 
