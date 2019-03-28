@@ -4,6 +4,7 @@
 #include <cmath>
 #include <ctime>
 #include <iostream>
+#include <utility>
 
 void parallelQuickSort(int* array, const int SIZE, const int threads);
 void quickSort(int* array, int low, int high);
@@ -15,15 +16,15 @@ bool isCorrectlySorted(int* customSortedArray, int* stdSortedArray,
 void printArray(int* array, const int size);
 
 int main() {
-    const int SIZE = 1000001;
+    // TODO(nifadyev): sort fails for little SIZE, ex 12
+    const int SIZE = 12001;
     const int THREADS = omp_get_max_threads();
-    // const int THREADS = 2;
     int* array = new int[SIZE];
     int* linear_sorted_array = new int[SIZE];
     double start_time = 0.0, end_time = 0.0;
     double linear_time = 0.0, parallel_time = 0.0;
 
-    // srand((unsigned int)time(NULL));
+// Store initial array on root thread
 #pragma omp master
     {
         srand(static_cast<unsigned int>(time(NULL)));
@@ -40,6 +41,7 @@ int main() {
     parallelQuickSort(array, SIZE, THREADS);
     parallel_time = omp_get_wtime() - start_time;
 
+// Perform linear quick sort and data output on root thread
 #pragma omp master
     {
         start_time = omp_get_wtime();
@@ -87,9 +89,10 @@ void quickSort(int* array, int low, int high) {
         }
 
         if (i <= j) {
-            if (i < j) {
-                std::swap(array[i], array[j]);
-            }
+            // if (i < j) {
+            std::swap(array[i], array[j]);
+
+            // }
             i++;
             j--;
         }
@@ -103,10 +106,19 @@ void quickSort(int* array, int low, int high) {
     }
 }
 
-// TODO: add docstring
+/*  Merge two arrays into one using pointers to starting and ending elements of
+   arrays. Compare elements of arrays and write element with lower value to
+   destination array.
+
+    p_first_array_start --> pointer to beginning of first array,
+    p_first_array_end --> pointer to ending of first array,
+    p_second_array_start --> pointer to beginning of second array,
+    p_second_array_end --> pointer to beginning of second array,
+    p_destination_array --> pointer to beginning of destination array. */
 void merge(int* p_first_array_start, int* p_first_array_end,
            int* p_second_array_start, int* p_second_array_end,
            int* p_destination_array) {
+    // ! WTF is going on in this function
     while ((p_first_array_start <= p_first_array_end) &&
            (p_second_array_start <= p_second_array_end)) {
         auto elem1 = *p_first_array_start;
@@ -122,79 +134,72 @@ void merge(int* p_first_array_start, int* p_first_array_end,
         p_destination_array++;
     }
 
-    if (p_first_array_start > p_first_array_end) {
-        std::copy(p_second_array_start, p_second_array_end + 1,
-                  p_destination_array);
-    } else {
-        std::copy(p_first_array_start, p_first_array_end + 1,
-                  p_destination_array);
-    }
+    std::copy(p_first_array_start, p_first_array_end + 1, p_destination_array);
 }
 
-// void parallelQuickSort(int* a, int* sorted_array, int n) {
+/*  Sort array using parallel quick sort algorithm and openMP.
+    Separetly sort parts of initial array (subarrays) on threads, then
+    merge sorted subarrays into initial array.
+
+    array --> array to be sorted,
+    size --> array size,
+    threads --> total number of threads involved in parallel algorithm. */
 void parallelQuickSort(int* array, const int SIZE, const int threads) {
     int* sorted_array = new int[SIZE];
     omp_set_num_threads(threads);
-    // int chunk_size = SIZE / threads ? SIZE / threads : 1;
     // By default SIZE cannot be less than number of threads
     int chunk_size = SIZE / threads;
 
 #pragma omp parallel for schedule(static) shared(array)
-    for (int i = 0; i < threads; i++) {
+    for (int i = 0; i < threads - 1; i++) {
         auto low = i * chunk_size;
         auto high = low + chunk_size - 1;
 
         quickSort(array, low, high);
     }
 
-    auto ret = SIZE % threads;
-    if (ret) {
-        quickSort(array, threads * chunk_size, SIZE - 1);
-    }
+    // Last part of array may contain remainder
+    // Thats why it should be handled outside of the cycle
+    quickSort(array, (threads - 1) * chunk_size, SIZE - 1);
+
+    auto remainder_size = SIZE % threads;
 
     // reduction
-    int array_size = chunk_size;  // ? current_chunk_size
-    // int count = array_size << 1;  // ? step
-    int j = 0;
-    int merges = 0;
-    // while (array_size < SIZE) {
-    // #pragma omp parallel for
-    // TODO(nifadyev): write shift and sizess of subarrays into 2 arrays
+    int current_chunk_size = chunk_size;  // ? current_chunk_size
+    // TODO(nifadyev): write shift and sizes of subarrays into 2 arrays
     // outside cycle to decrease complexity
-    for (int count = array_size << 1; array_size < SIZE;
-         count = array_size << 1) {
-        // #pragma omp parallel for shared(array, sorted_array)
+    for (int count = current_chunk_size << 1; current_chunk_size < SIZE;
+         count = current_chunk_size << 1) {
+        int j = 0;
         for (j = 0; j <= SIZE - count; j += count) {
             int* first_array_start = array + j;
-            int* first_array_end = first_array_start + array_size - 1;
+            int* first_array_end = first_array_start + current_chunk_size - 1;
 
-            int* second_array_start = array + j + array_size;
-            int* second_array_end = second_array_start + array_size - 1;
+            int* second_array_start = array + j + current_chunk_size;
+            int* second_array_end = second_array_start + current_chunk_size - 1;
 
             merge(first_array_start, first_array_end, second_array_start,
                   second_array_end, sorted_array + j);
-            merges++;
         }
 
         std::copy(sorted_array, sorted_array + j, array);
 
-        array_size = (array_size << 1) > SIZE ? SIZE : array_size << 1;
-        // count = array_size << 1;
+        current_chunk_size =
+            (current_chunk_size << 1) > SIZE ? SIZE : current_chunk_size << 1;
     }
 
-    if (ret) {
-        int array_size = SIZE - ret;
+    // FIXME: extra merge execution, should remove it
+    if (remainder_size) {
+        int current_chunk_size = SIZE - remainder_size;
         int* first_array_start = array;
-        int* first_array_end = first_array_start + array_size - 1;
+        int* first_array_end = first_array_start + current_chunk_size - 1;
 
-        int* second_array_start = array + array_size;
-        int* second_array_end = second_array_start + ret - 1;
+        int* second_array_start = array + current_chunk_size;
+        int* second_array_end = second_array_start + remainder_size - 1;
 
         merge(first_array_start, first_array_end, second_array_start,
               second_array_end, sorted_array);
-        merges++;
     }
-    std::cout << "Merge counter: " << merges << std::endl;
 
     std::copy(sorted_array, sorted_array + SIZE, array);
     delete[] sorted_array;
