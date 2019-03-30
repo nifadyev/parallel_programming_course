@@ -1,4 +1,4 @@
-#pragma -D_SCL_SECURE_NO_WARNINGS
+#define _SCL_SECURE_NO_WARNINGS
 // Copyright 2019 Nifadyev Vadim
 #include <omp.h>
 #include <algorithm>
@@ -187,7 +187,7 @@ void parallelQuickSort(int* array, const int size, const int threads) {
 
 #pragma omp parallel for schedule(static) \
     shared(array, first_subarray_size, second_subarray_size, step)
-        for (int _ = 0; _ < i; _++) {
+        for (int f = 0; f < i; f++) {
             int thread_id = omp_get_thread_num();
             int first_subarray_start_index =
                 thread_id * subarray_size * static_cast<int>(step * 2);
