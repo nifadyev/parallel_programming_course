@@ -1,7 +1,6 @@
 // Copyright 2019 Nifadyev Vadim
 #include <omp.h>
 #include <algorithm>
-#include <cmath>
 #include <ctime>
 #include <iostream>
 #include <utility>
@@ -17,51 +16,20 @@ bool isCorrectlySorted(int* linear_sorted_array, int* parallel_sorted_array,
 
 int main() {
     double start_time = 0.0, finish_time = 0.0;
-    const int SIZE = 1200000;
-    // const int THREADS = 2;
+    const int SIZE = 1234567;
     const int THREADS = omp_get_max_threads();
-    // int l = 100001;
-    // int newLength = l;
-    // int length = 0;
-    int* array;
-    int* linear_sorted_array;
-    // FIXME: break when 4 threads and remainder
-    // Remainder
-    array = new int[SIZE];
+    int* array = new int[SIZE];
+    int* linear_sorted_array = new int[SIZE];
+
     srand(static_cast<unsigned int>(time(NULL)));
     std::generate(array, array + SIZE, []() { return std::rand() % 100 + 1; });
+    std::copy(array, array + SIZE, linear_sorted_array);
 
     if (SIZE < 50) {
         std::cout << "Initial array: ";
         printArray(array, SIZE);
     }
-    /*     if (l % threads != 0) {
-            newLength += newLength % (threads);
-            array = new int[newLength];
-            std::generate(array, array + l, []() { return std::rand() % 100 + 1;
-       });
 
-            std::cout << "New length: " << l << " -> " << newLength <<
-       std::endl; if (l < 100) { std::cout << "Initial array ";
-                printArray(array, newLength);
-            }
-            length = newLength;
-        } else {
-            array = new int[l];
-            std::generate(array, array + l, []() { return std::rand() % 100 + 1;
-       });
-
-            std::cout << "Length: " << l << std::endl;
-            if (l < 100) {
-                std::cout << "Initial array ";
-                printArray(array, l);
-            }
-            length = l;
-        }
-    */
-    linear_sorted_array = new int[SIZE];
-
-    std::copy(array, array + SIZE, linear_sorted_array);
 
     start_time = omp_get_wtime();
     parallelQuickSort(array, SIZE, THREADS);
@@ -112,9 +80,7 @@ void quickSort(int* array, int low, int high) {
         }
 
         if (i <= j) {
-            // if (i < j) {
             std::swap(array[i], array[j]);
-            // }
             i++;
             j--;
         }
@@ -177,7 +143,6 @@ void merge(int* array, const int first_subarray_size,
         }
     }
 
-    // ! WTF
     // Copy to initial array merged array
     for (i = first_subarray_start_index;
          i < second_subarray_start_index + second_subarray_size; i++) {
@@ -186,44 +151,37 @@ void merge(int* array, const int first_subarray_size,
 }
 
 /*  Sort array using parallel quick sort algorithm and openMP.
-    Separetly sort parts of initial array (subarrays) on threads, then
+    Separately sort parts of initial array (subarrays) on threads, then
     merge sorted subarrays into initial array.
 
-    array --> array to be sorted,
-    size --> array size,
-    threads --> total number of threads involved in parallel algorithm. */
+    array --> Array to be sorted,
+    size --> Array size,
+    threads --> Total number of threads involved in parallel algorithm. */
 void parallelQuickSort(int* array, const int size, const int threads) {
     omp_set_num_threads(threads);
     int subarray_size = size / threads;
 
 #pragma omp parallel for schedule(static) shared(array)
-    for (int i = 0; i < threads; i++) {
-        auto low = i * subarray_size;
-        auto high = low + subarray_size - 1;
+    for (int i = 0; i < threads - 1; i++) {
+        int low = i * subarray_size;
+        int high = low + subarray_size - 1;
 
         quickSort(array, low, high);
     }
 
-    /*     for (int i = 0; i < threads - 1; i++) {
-            auto low = i * subarray_size;
-            auto high = low + subarray_size - 1;
+    // Last part of array may contain remainder
+    // Thats why it should be handled outside of the cycle
+    quickSort(array, (threads - 1) * subarray_size, size - 1);
 
-            quickSort(array, low, high);
-        }
-
-        // Last part of array may contain remainder
-        // Thats why it should be handled outside of the cycle
-        quickSort(array, (threads - 1) * subarray_size, size - 1);
-    */
-
-    // TODO(nifadyev): describe this block
-    int k = 0;  // ! WTF is this
+    int step = 1;  // Distance between merging threads
     for (int i = threads / 2; i > 0; i /= 2) {
-        int step = pow(2.0, k);  // ! WTF is this
         int first_subarray_size = subarray_size * static_cast<int>(step);
-        // TODO(nifadyev): add check for last cycle iteration for remainder
-        // processing
         int second_subarray_size = first_subarray_size;
+
+        // Handle remainded array elements during last iteration
+        if (i / 2 <= 0) {
+            second_subarray_size += size % threads;
+        }
         omp_set_num_threads(i);
 
 #pragma omp parallel for schedule(static) \
@@ -231,14 +189,14 @@ void parallelQuickSort(int* array, const int size, const int threads) {
         for (int _ = 0; _ < i; _++) {
             int thread_id = omp_get_thread_num();
             int first_subarray_start_index =
-                thread_id * subarray_size * static_cast<int>(pow(2.0, k + 1));
+                thread_id * subarray_size * static_cast<int>(step * 2);
             int second_subarray_start_index =
                 first_subarray_start_index +
                 subarray_size * static_cast<int>(step);
             merge(array, first_subarray_size, second_subarray_size,
                   first_subarray_start_index, second_subarray_start_index);
         }
-        k++;
+        step *= 2;
     }
 }
 
