@@ -1,3 +1,4 @@
+#pragma -D_SCL_SECURE_NO_WARNINGS
 // Copyright 2019 Nifadyev Vadim
 #include <omp.h>
 #include <algorithm>
