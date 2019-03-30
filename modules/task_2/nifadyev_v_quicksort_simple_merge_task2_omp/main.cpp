@@ -6,62 +6,85 @@
 #include <iostream>
 #include <utility>
 
-void parallelQuickSort(int* array, const int SIZE, const int threads);
 void quickSort(int* array, int low, int high);
-void merge(int* p_first_array_start, int* p_first_array_end,
-           int* p_second_array_start, int* p_second_array_end,
-           int* p_destination_array);
-bool isCorrectlySorted(int* customSortedArray, int* stdSortedArray,
-                       const int size);
 void printArray(int* array, const int size);
+void merge(int* array, const int first_subarray_size,
+           const int second_subarray_size, const int first_subarray_start_index,
+           const int second_subarray_start_index);
+void parallelQuickSort(int* array, const int size, const int threads);
+bool isCorrectlySorted(int* linear_sorted_array, int* parallel_sorted_array,
+                       const int size);
 
 int main() {
-    // TODO(nifadyev): sort fails for little SIZE, ex 12
-    const int SIZE = 12001;
+    double start_time = 0.0, finish_time = 0.0;
+    const int SIZE = 1200000;
+    // const int THREADS = 2;
     const int THREADS = omp_get_max_threads();
-    int* array = new int[SIZE];
-    int* linear_sorted_array = new int[SIZE];
-    double start_time = 0.0, end_time = 0.0;
-    double linear_time = 0.0, parallel_time = 0.0;
+    // int l = 100001;
+    // int newLength = l;
+    // int length = 0;
+    int* array;
+    int* linear_sorted_array;
+    // FIXME: break when 4 threads and remainder
+    // Remainder
+    array = new int[SIZE];
+    srand(static_cast<unsigned int>(time(NULL)));
+    std::generate(array, array + SIZE, []() { return std::rand() % 100 + 1; });
 
-// Store initial array on root thread
-#pragma omp master
-    {
-        srand(static_cast<unsigned int>(time(NULL)));
-        std::generate(array, array + SIZE,
-                      []() { return std::rand() % 100 + 1; });
-        if (SIZE <= 50) {
-            std::cout << "Initial array:  ";
-            printArray(array, SIZE);
-        }
-        std::copy(array, array + SIZE, linear_sorted_array);
+    if (SIZE < 50) {
+        std::cout << "Initial array: ";
+        printArray(array, SIZE);
     }
+    /*     if (l % threads != 0) {
+            newLength += newLength % (threads);
+            array = new int[newLength];
+            std::generate(array, array + l, []() { return std::rand() % 100 + 1;
+       });
+
+            std::cout << "New length: " << l << " -> " << newLength <<
+       std::endl; if (l < 100) { std::cout << "Initial array ";
+                printArray(array, newLength);
+            }
+            length = newLength;
+        } else {
+            array = new int[l];
+            std::generate(array, array + l, []() { return std::rand() % 100 + 1;
+       });
+
+            std::cout << "Length: " << l << std::endl;
+            if (l < 100) {
+                std::cout << "Initial array ";
+                printArray(array, l);
+            }
+            length = l;
+        }
+    */
+    linear_sorted_array = new int[SIZE];
+
+    std::copy(array, array + SIZE, linear_sorted_array);
 
     start_time = omp_get_wtime();
     parallelQuickSort(array, SIZE, THREADS);
-    parallel_time = omp_get_wtime() - start_time;
+    finish_time = omp_get_wtime();
+    double parallel_time = finish_time - start_time;
 
-// Perform linear quick sort and data output on root thread
-#pragma omp master
-    {
-        start_time = omp_get_wtime();
-        quickSort(linear_sorted_array, 0, SIZE - 1);
-        linear_time = omp_get_wtime() - start_time;
+    start_time = omp_get_wtime();
+    quickSort(linear_sorted_array, 0, SIZE - 1);
+    finish_time = omp_get_wtime();
+    double linear_time = finish_time - start_time;
 
-        if (isCorrectlySorted(array, linear_sorted_array, SIZE)) {
-            if (SIZE <= 50) {
-                std::cout << "Sorted array:  ";
-                printArray(array, SIZE);
-            }
-        } else {
-            std::cout << "Quick sort failed. Array is not sorted" << std::endl;
+    if (isCorrectlySorted(linear_sorted_array, array, SIZE)) {
+        if (SIZE < 50) {
+            std::cout << "Sorted array:  ";
+            printArray(array, SIZE);
         }
-        std::cout << "Linear time: " << linear_time << std::endl;
-        std::cout << "Parallel time: " << parallel_time << std::endl;
+    } else {
+        std::cout << "Quick sort failed. Array is not sorted" << std::endl;
     }
 
-    delete[] array;
-    delete[] linear_sorted_array;
+    std::cout << "Parallel time: " << parallel_time << std::endl;
+    std::cout << "Linear time:   " << linear_time << std::endl;
+    std::cout << "Boost: " << linear_time / parallel_time << std::endl;
 
     return 0;
 }
@@ -91,7 +114,6 @@ void quickSort(int* array, int low, int high) {
         if (i <= j) {
             // if (i < j) {
             std::swap(array[i], array[j]);
-
             // }
             i++;
             j--;
@@ -106,35 +128,61 @@ void quickSort(int* array, int low, int high) {
     }
 }
 
-/*  Merge two arrays into one using pointers to starting and ending elements of
-   arrays. Compare elements of arrays and write element with lower value to
-   destination array.
+void printArray(int* array, const int size) {
+    for (int i = 0; i < size; i++) {
+        std::cout << array[i] << " ";
+    }
+    std::cout << std::endl;
+}
 
-    p_first_array_start --> pointer to beginning of first array,
-    p_first_array_end --> pointer to ending of first array,
-    p_second_array_start --> pointer to beginning of second array,
-    p_second_array_end --> pointer to beginning of second array,
-    p_destination_array --> pointer to beginning of destination array. */
-void merge(int* p_first_array_start, int* p_first_array_end,
-           int* p_second_array_start, int* p_second_array_end,
-           int* p_destination_array) {
-    // ! WTF is going on in this function
-    while ((p_first_array_start <= p_first_array_end) &&
-           (p_second_array_start <= p_second_array_end)) {
-        auto elem1 = *p_first_array_start;
-        auto elem2 = *p_second_array_start;
+/*  Merge two subarrays into one. Compare elements of arrays
+    and write element with lower value to merged subarray.
+    Then copy merged subarrays into initial array.
 
-        if (elem1 < elem2) {
-            *p_destination_array = elem1;
-            p_first_array_start++;
+    array --> Array which contains 2 subarrays to merge,
+    first_subarray_size --> Length of first subarray,
+    second_subarray_size --> Length of second subarray,
+    first_subarray_start_index --> Starting index of first array,
+    second_subarray_start_index --> Starting index of second array. */
+void merge(int* array, const int first_subarray_size,
+           const int second_subarray_size, const int first_subarray_start_index,
+           const int second_subarray_start_index) {
+    int i = 0, j = 0, k = 0;
+    int* merged_subarray = new int[first_subarray_size + second_subarray_size];
+
+    while (i < first_subarray_size && j < second_subarray_size) {
+        if (array[first_subarray_start_index + i] <=
+            array[second_subarray_start_index + j]) {
+            merged_subarray[k] = array[first_subarray_start_index + i];
+            i++;
         } else {
-            *p_destination_array = elem2;
-            p_second_array_start++;
+            merged_subarray[k] = array[second_subarray_start_index + j];
+            j++;
         }
-        p_destination_array++;
+        k++;
     }
 
-    std::copy(p_first_array_start, p_first_array_end + 1, p_destination_array);
+    // Each element of second subarray is smaller than any element from first
+    // subarray
+    if (i < first_subarray_size) {
+        for (int p = i; p < first_subarray_size; p++) {
+            merged_subarray[k] = array[first_subarray_start_index + p];
+            k++;
+        }
+    } else {
+        // On the contrary
+        for (int p = j; p < second_subarray_size; p++) {
+            merged_subarray[k] = array[second_subarray_start_index + p];
+            k++;
+        }
+    }
+
+    // ! WTF
+    // Copy to initial array merged array
+    for (i = first_subarray_start_index;
+         i < second_subarray_start_index + second_subarray_size; i++) {
+        array[i] = merged_subarray[i - first_subarray_start_index];
+    }
 }
 
 /*  Sort array using parallel quick sort algorithm and openMP.
@@ -144,65 +192,54 @@ void merge(int* p_first_array_start, int* p_first_array_end,
     array --> array to be sorted,
     size --> array size,
     threads --> total number of threads involved in parallel algorithm. */
-void parallelQuickSort(int* array, const int SIZE, const int threads) {
-    int* sorted_array = new int[SIZE];
+void parallelQuickSort(int* array, const int size, const int threads) {
     omp_set_num_threads(threads);
-    // By default SIZE cannot be less than number of threads
-    int chunk_size = SIZE / threads;
+    int subarray_size = size / threads;
 
 #pragma omp parallel for schedule(static) shared(array)
-    for (int i = 0; i < threads - 1; i++) {
-        auto low = i * chunk_size;
-        auto high = low + chunk_size - 1;
+    for (int i = 0; i < threads; i++) {
+        auto low = i * subarray_size;
+        auto high = low + subarray_size - 1;
 
         quickSort(array, low, high);
     }
 
-    // Last part of array may contain remainder
-    // Thats why it should be handled outside of the cycle
-    quickSort(array, (threads - 1) * chunk_size, SIZE - 1);
+    /*     for (int i = 0; i < threads - 1; i++) {
+            auto low = i * subarray_size;
+            auto high = low + subarray_size - 1;
 
-    auto remainder_size = SIZE % threads;
-
-    // reduction
-    int current_chunk_size = chunk_size;  // ? current_chunk_size
-    // TODO(nifadyev): write shift and sizes of subarrays into 2 arrays
-    // outside cycle to decrease complexity
-    for (int count = current_chunk_size << 1; current_chunk_size < SIZE;
-         count = current_chunk_size << 1) {
-        int j = 0;
-        for (j = 0; j <= SIZE - count; j += count) {
-            int* first_array_start = array + j;
-            int* first_array_end = first_array_start + current_chunk_size - 1;
-
-            int* second_array_start = array + j + current_chunk_size;
-            int* second_array_end = second_array_start + current_chunk_size - 1;
-
-            merge(first_array_start, first_array_end, second_array_start,
-                  second_array_end, sorted_array + j);
+            quickSort(array, low, high);
         }
 
-        std::copy(sorted_array, sorted_array + j, array);
+        // Last part of array may contain remainder
+        // Thats why it should be handled outside of the cycle
+        quickSort(array, (threads - 1) * subarray_size, size - 1);
+    */
 
-        current_chunk_size =
-            (current_chunk_size << 1) > SIZE ? SIZE : current_chunk_size << 1;
+    // TODO(nifadyev): describe this block
+    int k = 0;  // ! WTF is this
+    for (int i = threads / 2; i > 0; i /= 2) {
+        int step = pow(2.0, k);  // ! WTF is this
+        int first_subarray_size = subarray_size * static_cast<int>(step);
+        // TODO(nifadyev): add check for last cycle iteration for remainder
+        // processing
+        int second_subarray_size = first_subarray_size;
+        omp_set_num_threads(i);
+
+#pragma omp parallel for schedule(static) \
+    shared(array, first_subarray_size, second_subarray_size, step)
+        for (int _ = 0; _ < i; _++) {
+            int thread_id = omp_get_thread_num();
+            int first_subarray_start_index =
+                thread_id * subarray_size * static_cast<int>(pow(2.0, k + 1));
+            int second_subarray_start_index =
+                first_subarray_start_index +
+                subarray_size * static_cast<int>(step);
+            merge(array, first_subarray_size, second_subarray_size,
+                  first_subarray_start_index, second_subarray_start_index);
+        }
+        k++;
     }
-
-    // FIXME: extra merge execution, should remove it
-    if (remainder_size) {
-        int current_chunk_size = SIZE - remainder_size;
-        int* first_array_start = array;
-        int* first_array_end = first_array_start + current_chunk_size - 1;
-
-        int* second_array_start = array + current_chunk_size;
-        int* second_array_end = second_array_start + remainder_size - 1;
-
-        merge(first_array_start, first_array_end, second_array_start,
-              second_array_end, sorted_array);
-    }
-
-    std::copy(sorted_array, sorted_array + SIZE, array);
-    delete[] sorted_array;
 }
 
 /* Compare array sorted by parallelQuickSort() to
@@ -211,20 +248,13 @@ array sorted by linear quickSort().
     customSortedArray[] --> Array sorted by QuickSort,
     stdSortedArray[]  --> Array sorted by qsort,
     size  --> Size of both arrays. */
-bool isCorrectlySorted(int* customSortedArray, int* stdSortedArray,
+bool isCorrectlySorted(int* linear_sorted_array, int* parallel_sorted_array,
                        const int size) {
     for (int i = 0; i < size; i++) {
-        if (customSortedArray[i] != stdSortedArray[i]) {
+        if (linear_sorted_array[i] != parallel_sorted_array[i]) {
             return false;
         }
     }
 
     return true;
-}
-
-void printArray(int* array, const int size) {
-    for (int i = 0; i < size; i++) {
-        std::cout << array[i] << " ";
-    }
-    std::cout << std::endl;
 }
