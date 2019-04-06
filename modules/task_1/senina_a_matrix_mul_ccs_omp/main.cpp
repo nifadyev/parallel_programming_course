@@ -127,7 +127,7 @@ std::vector<std::vector<double>> mulMatrix(std::vector<std::vector<double>> A,
 }
 
 int main(int argc, char** argv) {
-    size_t size = 500;
+    size_t size = 50;
     if (argc == 2) {
         size = atoi(argv[1]);
     }

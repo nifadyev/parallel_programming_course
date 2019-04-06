@@ -12,7 +12,6 @@
 void quicksort(int* mass, int iStart, int iFinish) {
   if (iFinish > iStart) {
     int s = iStart, f = iFinish;
-
     // as the reference element take the middle of the array
     int middle = mass[(iFinish + iStart) / 2];
 
@@ -43,50 +42,39 @@ void quicksort(int* mass, int iStart, int iFinish) {
 // FUNCTION OF ODD-EVEN MERGE
 
 // function that performs splitting into even and odd elements
-void split(const int *mass_1, int size_1, const int *mass_2, int size_2, bool isEven, std::vector<int> *Result) {
-  Result->reserve(size_1 + size_2);
-
-  int i, j;
-  if (isEven) {
-    i = 0, j = 0;
-  } else {
-    i = 1, j = 1;
+void splitUnsplit(int* mass, int* leftMass, int* rightMass, int left, int right, int flag) {
+  for (int i = flag; i < left; i += 2) {
+    leftMass[i] = mass[i];
   }
-  for (; (i < size_1) && (j < size_2);) {
-    if (mass_1[i] <= mass_2[j]) {
-      Result->push_back(mass_1[i]);
-      i += 2;
+
+  int l_ = flag;
+  int r_ = flag;
+  int i = flag;
+
+  while ((l_ < left) && (r_ < right)) {
+    if (leftMass[l_] <= rightMass[r_]) {
+      mass[i] = leftMass[l_];
+      l_ += 2;
     } else {
-      Result->push_back(mass_2[j]);
-      j += 2;
+      mass[i] = rightMass[r_];
+      r_ += 2;
     }
+    i += 2;
   }
-  for (; i < size_1; i += 2) {
-      Result->push_back(mass_1[i]);
-  }
-  for (; j < size_2; j += 2) {
-    Result->push_back(mass_2[j]);
-  }
-}
 
-void unsplit(const std::vector<int> vector1, const std::vector<int> vector2, int* Result) {
-  int size_1 = vector1.size(), size_2 = vector2.size();
-
-  int i = 0, j = 0;
-  for (; (i < size_1) && (j < size_2); i++, j++) {
-    Result[i + j] = vector1[i];
-    Result[i + j + 1] = vector2[j];
-  }
-  for (; i < size_1; i++) {
-    Result[size_1 + i] = vector1[i];
-  }
-  for (; j < size_2; j++) {
-    Result[size_2 + j] = vector2[j];
+  if (l_ == left) {
+    for (int j = r_; j < right; j += 2, i += 2) {
+      mass[i] = rightMass[j];
+    }
+  } else {
+    for (int j = l_; j < left; j += 2, i += 2) {
+      mass[i] = leftMass[j];
+    }
   }
 }
 
 void compare_exchange(int* x1, int* x2) {
-  if (*x1 > *x2) {
+  if (*x1 < *x2) {
     int tmp = *x1;
     *x1 = *x2;
     *x2 = tmp;
@@ -94,82 +82,69 @@ void compare_exchange(int* x1, int* x2) {
 }
 
 // function merges ordered arrays
-void oddEvenMerge(const std::vector<int> vector1, const std::vector<int> vector2, int* Result) {
-  int size_1 = vector1.size(), size_2 = vector2.size();
+void oddEvenMerge(int* mass, int size, int *array_of_sizes, int threads) {
+  int id;
+  int sortLevel = threads;
+  int* tmp1 = new int[size];
+  int* tmp2 = new int[threads + 1];
 
-  if (size_1 + size_2 > 2) {
-    unsplit(vector1, vector2, Result);
-    for (int i = 1; i < size_1 + size_2 - 1; i++) {
-      compare_exchange(&Result[i], &Result[i + 1]);
+  while ((sortLevel != 1)) {
+#pragma omp parallel for private(id)
+    for (id = 0; id < sortLevel; id++) {
+      int t = id % 2;
+      splitUnsplit(mass + array_of_sizes[id - t],
+        tmp1 + array_of_sizes[id],
+        mass + array_of_sizes[id + (1 - t)],
+        array_of_sizes[id + (1 - t)] - array_of_sizes[id - t],
+        array_of_sizes[id + 1 + (1 - t)] - array_of_sizes[id + (1 - t)], t);
     }
-  } else {
-    if (size_1 + size_2 == 2)
-      compare_exchange(&Result[0], &Result[1]);
+#pragma omp parallel for private(id)
+    for (id = 0; id < sortLevel; id++) {
+      if (id % 2 != 0) {
+        for (int j = 1; j < (array_of_sizes[id + 1] - array_of_sizes[id - 1] + 1) / 2; j++) {
+          compare_exchange(&(mass + array_of_sizes[id - 1])[2 * j],
+            &(mass + array_of_sizes[id - 1])[2 * j - 1]);
+        }
+      }
+    }
+    sortLevel = sortLevel / 2;
+
+    tmp2 = new int[sortLevel];
+    tmp2[0] = array_of_sizes[0];
+    for (int i = 1; i < sortLevel; i++) {
+      tmp2[i] = array_of_sizes[i * 2];
+    }
+    array_of_sizes = new int[sortLevel];
+    for (int i = 0; i < sortLevel; i++) {
+      array_of_sizes[i] = tmp2[i];
+    }
+    array_of_sizes[sortLevel] = size;
   }
+
+  delete[] tmp1;
+  delete[] tmp2;
 }
 
 void parallelQuicksort(int* mass, int threads, int size) {
-  std::vector<int> *Temp = new std::vector<int>[threads];
+  int id;
+  int *array_of_sizes = new int[threads + 1];
 
-  int step;
-  int *shift_array = new int[threads];
-  int *array_of_sizes = new int[threads];
-
-#pragma omp parallel shared(mass, step, shift_array, array_of_sizes, Temp) num_threads(threads)
-  {
-    int threadID;                         // current thread id
-    int thread_index;                     // necessary shift to get companion thread
-
-    threadID = omp_get_thread_num();
-
-    // distribute parts of the source array by thread and sort
-
-    shift_array[threadID] = threadID * (size / threads);
-
-    if (threadID == threads - 1) {
-      array_of_sizes[threadID] = (size / threads) + (size % threads);
-    } else {
-      array_of_sizes[threadID] = size / threads;
-    }
-
-    quicksort(mass + shift_array[threadID], 0, array_of_sizes[threadID] - 1);
-#pragma omp barrier  // wait until all threads sort their part of the source array
-
-    step = 1;
-
-    while (step < threads) {
-      // at each step, we select even and odd elements from paired streams
-      thread_index = static_cast<int>(pow(2, step - 1));
-
-      if (threadID % (thread_index * 2) == 0) {
-        split(mass + shift_array[threadID], array_of_sizes[threadID], mass + shift_array[threadID +
-          thread_index], array_of_sizes[threadID + thread_index], 1, &Temp[threadID]);
-      } else if (threadID % thread_index == 0) {
-        split(mass + shift_array[threadID], array_of_sizes[threadID], mass + shift_array[threadID -
-          thread_index], array_of_sizes[threadID - thread_index], 0, &Temp[threadID]);
-      }
-
-#pragma omp barrier  // we expect execution of this part by all threads
-
-      // Batcher merge on paired threads
-      if (threadID % (thread_index * 2) == 0) {
-        oddEvenMerge(Temp[threadID], Temp[threadID + thread_index], mass + shift_array[threadID]);
-        array_of_sizes[threadID] += array_of_sizes[threadID + thread_index];
-        Temp[threadID].clear();
-        Temp[threadID].shrink_to_fit();
-        Temp[threadID + thread_index].clear();
-        Temp[threadID + thread_index].shrink_to_fit();
-      }
-#pragma omp single
-      {
-        step *= 2;  // proceed to the next step by the first free thread
-      }
-#pragma omp barrier  // waiting while all threads execute merging and sorting
-    }
+  for (int i = 0; i < threads; i++) {
+    array_of_sizes[i] = i * size / threads + (i * size / threads) % 2;
   }
-  delete[] Temp;
+  array_of_sizes[threads] = size;
+
+  omp_set_num_threads(threads);
+
+#pragma omp parallel for private(id)
+  for (id = 0; id < threads; id++) {
+    quicksort(mass, array_of_sizes[id], array_of_sizes[id + 1] - 1);
+  }
+  if (threads > 1) {
+    oddEvenMerge(mass, size, array_of_sizes, threads);
+  }
+
   delete[] array_of_sizes;
-  delete[] shift_array;
 }
 
 // SUPPORTING FUNCTIONS
@@ -197,14 +172,14 @@ bool check(int* A, int* B, int size) {
   return true;
 }
 
-int compare(const int *i, const int *j) {
+/*int compare(const int *i, const int *j) {
   return *i - *j;
-}
+}*/
 
 // MAIN FUNCTION
 
 int main(int argc, char** argv) {
-  int size, threads = 2;
+  int size, threads = 4;
 
   srand((unsigned int)time(NULL));
 
@@ -213,18 +188,18 @@ int main(int argc, char** argv) {
   } else {
     // size = 500 + std::rand() % 1000;
     // size = 12;
-    size = 10000000;
+    size = 1000000;
   }
 
-  std::cout << "n = " << size << std::endl;
+  std::cout << "Array size: n = " << size << std::endl;
 
   int* data = new int[size];
   int* copy = new int[size];
 
-  // int data[12] = {3, 7, 10, 1, 10, 17, 4, 8, 5, 9, 11, 10};
+  // int data[12] = { 3, 7, 10, 1, 10, 17, 4, 8, 5, 9, 11, 10 };
   // int copy[12] = { 3, 7, 10, 1, 10, 17, 4, 8, 5, 9, 11, 10 };
 
-  std::cout << "massive generating..." << std::endl;
+  std::cout << "Start massive generating..." << std::endl;
 
   create_array(data, copy, size);
 
@@ -232,7 +207,7 @@ int main(int argc, char** argv) {
 
   // print_array(data, size);
 
-  std::cout << "sequential sort..." << std::endl;
+  std::cout << "Start sequential sort..." << std::endl;
 
   auto timeWork_ = omp_get_wtime();
   quicksort(copy, 0, size - 1);
@@ -241,7 +216,7 @@ int main(int argc, char** argv) {
   // print_array(copy, size);
 
   std::cout << "sorting done!" << std::endl << std::endl;
-  std::cout << "parallel sort..." << std::endl;
+  std::cout << "Start parallel sort..." << std::endl;
 
   auto timeWork = omp_get_wtime();
   parallelQuicksort(data, threads, size);
@@ -251,9 +226,10 @@ int main(int argc, char** argv) {
 
   std::cout << "sorting done!" << std::endl << std::endl;
 
-  std::cout.precision(17);
+  std::cout.precision(16);
   if (check(copy, data, size))
-    std::cout << "- good sorting: results of implemented sort and library sort coincide"
+    std::cout << "- good sorting: results of sequential sort and parallel sort coincide"
+
     << std::endl << "- time of sequential sorting: " << timeWork_
     << std::endl << "- time of parallel sorting: " << timeWork
     << std::endl << "- acceleration of parallel sorting: " << timeWork_ / timeWork << std::endl;
